@@ -11,6 +11,10 @@
  */
 //#include "../usermods/EXAMPLE_v2/usermod_v2_example.h"
 
+#ifdef USERMOD_FSEQ
+  #include "../usermods/FSEQ/usermod_fseq.h"
+#endif
+
 #ifdef USERMOD_BATTERY
   #include "../usermods/Battery/usermod_v2_Battery.h"
 #endif
@@ -191,7 +195,7 @@
     #include "SD.h"
     #include "SPI.h"
   #endif
-  #include "../usermods/sd_card/usermod_sd_card.h"
+  //#include "../usermods/sd_card/usermod_sd_card.h"
 #endif
 
 #ifdef USERMOD_PWM_OUTPUTS
@@ -262,6 +266,10 @@ void registerUsermods()
    * \/ \/ \/
    */
   //UsermodManager::add(new MyExampleUsermod());
+
+  #ifdef USERMOD_FSEQ
+    UsermodManager::add(new UsermodFseq());
+  #endif
 
   #ifdef USERMOD_BATTERY
   UsermodManager::add(new UsermodBattery());
@@ -419,9 +427,9 @@ void registerUsermods()
   UsermodManager::add(new BobLightUsermod());
   #endif
 
-  #ifdef SD_ADAPTER
-  UsermodManager::add(new UsermodSdCard());
-  #endif
+  //#ifdef SD_ADAPTER
+  //UsermodManager::add(new UsermodSdCard());
+  //#endif
 
   #ifdef USERMOD_PWM_OUTPUTS
   UsermodManager::add(new PwmOutputsUsermod());
