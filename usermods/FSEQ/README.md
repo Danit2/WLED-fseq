@@ -1,8 +1,8 @@
-### 2. Configure PlatformIO
+### Configure PlatformIO
 
-Add the following configuration to your platformio_override.ini (or platformio.ini) to enable the necessary build flags and define the usermod:
+Add the following configuration to your `platformio_override.ini` (or `platformio.ini`) to enable the necessary build flags and define the usermod:
 
-
+```ini
 [env:esp32dev_V4]
 build_flags = 
   -D WLED_DEBUG
@@ -14,6 +14,8 @@ build_flags =
   -D USERMOD_FSEQ
   -std=gnu++17
   -I wled00/src/dependencies/json
+
+
 
 
 
