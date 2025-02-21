@@ -15,6 +15,10 @@
   #include "../usermods/FSEQ/usermod_fseq.h"
 #endif
 
+#ifdef USERMOD_FPP
+  #include "../usermods/FSEQ/usermod_fpp.h"
+#endif
+
 #ifdef USERMOD_BATTERY
   #include "../usermods/Battery/usermod_v2_Battery.h"
 #endif
@@ -269,6 +273,10 @@ void registerUsermods()
 
   #ifdef USERMOD_FSEQ
     UsermodManager::add(new UsermodFseq());
+  #endif
+
+  #ifdef USERMOD_FPP
+    UsermodManager::add(new UsermodFPP());
   #endif
 
   #ifdef USERMOD_BATTERY
