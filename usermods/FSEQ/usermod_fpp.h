@@ -1,6 +1,7 @@
 #pragma once
 
 #include "wled.h"
+#include "usermod_fseq.h"  // Obsahuje FSEQ playback logiku a getter metódy pre piny
 
 #ifdef WLED_USE_SD_SPI
   #include <SPI.h>
@@ -14,7 +15,6 @@
 #include <ArduinoJson-v6.h>
 
 // ----- Minimal WriteBufferingStream Implementation -----
-// This class wraps an underlying stream (the SD file) and buffers write operations.
 class WriteBufferingStream : public Stream {
   public:
     WriteBufferingStream(Stream &upstream, size_t capacity) : _upstream(upstream) {
@@ -71,23 +71,22 @@ class UsermodFPP : public Usermod {
     AsyncUDP udp;
     bool udpStarted = false;
     const IPAddress multicastAddr = IPAddress(239, 70, 80, 80);
-    const uint16_t udpPort = 32320; // UDP port for discovery
+    const uint16_t udpPort = 32320; // UDP port pre FPP discovery
 
-    // Variables for file upload processing
+    // Premenné pre spracovanie uploadu súborov
     File currentUploadFile;
     String currentUploadFileName = "";
     unsigned long uploadStartTime = 0;
-    // Buffered stream for writing to SD card
     WriteBufferingStream* uploadStream = nullptr;
 
     String getDeviceName() {
       return String(serverDescription);
     }
 
-    // Build system info JSON
+    // Sestaví JSON so systémovými informáciami
     String buildSystemInfoJSON() {
       DynamicJsonDocument doc(1024);
-      doc["status"] = "running";
+      doc["fppd"] = "running";
       String devName = getDeviceName();
       doc["HostName"] = devName;
       doc["HostDescription"] = devName;
@@ -109,10 +108,10 @@ class UsermodFPP : public Usermod {
       return json;
     }
 
-    // Build system status JSON
+    // Sestaví JSON so systémovým statusom
     String buildSystemStatusJSON() {
       DynamicJsonDocument doc(1024);
-      doc["status"] = "running";
+      doc["fppd"] = "running";
       String devName = getDeviceName();
       doc["HostName"] = devName;
       doc["HostDescription"] = devName;
@@ -123,13 +122,39 @@ class UsermodFPP : public Usermod {
       doc["majorVersion"] = 4;
       doc["minorVersion"] = 0;
       doc["typeId"] = 195;
-      // Additional fields can be added as needed
+      doc["current_sequence"] = "";
+      doc["playlist"] = "";
+      doc["seconds_elapsed"] = 0;
+      doc["seconds_played"] = 0;
+      doc["seconds_remaining"] = 0;
+      doc["time_elapsed"] = "00:00";
+      doc["time_remaining"] = "00:00";
+      doc["status"] = 0;
+      doc["status_name"] = "idle";
       String json;
       serializeJson(doc, json);
       return json;
     }
 
-    // Send a ping packet via UDP
+    // Sestaví JSON pre FPP multi-sync systémy
+    String buildFppdMultiSyncSystemsJSON() {
+      DynamicJsonDocument doc(512);
+      String devName = getDeviceName();
+      doc["hostname"] = devName;
+      doc["id"] = devName;
+      doc["ip"] = WiFi.localIP().toString();
+      doc["version"] = "4.x-dev";
+      doc["hardwareType"] = "ESPixelStick-ESP32";
+      doc["type"] = 195;
+      doc["num_chan"] = 2052;
+      doc["NumPixelPort"] = 5;
+      doc["NumSerialPort"] = 0;
+      String json;
+      serializeJson(doc, json);
+      return json;
+    }
+
+    // Odoslanie ping paket cez UDP
     void sendPingPacket(IPAddress destination = IPAddress(255,255,255,255)) {
       uint8_t buf[301];
       memset(buf, 0, sizeof(buf));
@@ -150,7 +175,7 @@ class UsermodFPP : public Usermod {
       IPAddress ip = WiFi.localIP();
       buf[15] = ip[0]; buf[16] = ip[1]; buf[17] = ip[2]; buf[18] = ip[3];
       String hostName = getDeviceName();
-      if (hostName.length() > 32) hostName = hostName.substring(0, 32);
+      if(hostName.length() > 32) hostName = hostName.substring(0,32);
       for (int i = 0; i < 32; i++) {
         buf[19 + i] = (i < hostName.length()) ? hostName[i] : 0;
       }
@@ -172,10 +197,16 @@ class UsermodFPP : public Usermod {
       DEBUG_PRINTF("[%s] FPP Usermod loaded\n", _name);
 
 #ifdef WLED_USE_SD_SPI
-      if (!SD.begin(WLED_PIN_SS)) {
-        DEBUG_PRINTF("[%s] ERROR: SD.begin() failed!\n", _name);
+      // Načítanie pinov z UsermodFseq cez getter metódy
+      int8_t csPin   = UsermodFseq::getCsPin();
+      int8_t sckPin  = UsermodFseq::getSckPin();
+      int8_t misoPin = UsermodFseq::getMisoPin();
+      int8_t mosiPin = UsermodFseq::getMosiPin();
+      // SPI port je predpokladom inicializovaný v UsermodFseq, ak nie, je možné použiť napr. SPIClass(VSPI)
+      if (!SD.begin(csPin)) {
+        DEBUG_PRINTF("[%s] ERROR: SD.begin() failed with CS pin %d!\n", _name, csPin);
       } else {
-        DEBUG_PRINTF("[%s] SD card initialized (SPI)\n", _name);
+        DEBUG_PRINTF("[%s] SD card initialized (SPI) with CS pin %d\n", _name, csPin);
       }
 #elif defined(WLED_USE_SD_MMC)
       if (!SD_MMC.begin()) {
@@ -185,6 +216,7 @@ class UsermodFPP : public Usermod {
       }
 #endif
 
+      // Príklad niektorých API endpointov
       server.on("/api/system/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String json = buildSystemInfoJSON();
         request->send(200, "application/json", json);
@@ -193,11 +225,39 @@ class UsermodFPP : public Usermod {
         String json = buildSystemStatusJSON();
         request->send(200, "application/json", json);
       });
+      server.on("/api/fppd/multiSyncSystems", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String json = buildFppdMultiSyncSystemsJSON();
+        request->send(200, "application/json", json);
+      });
+      server.on("/api/playlists", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"playlists\": []}");
+      });
+      server.on("/api/cape", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"cape\": \"none\"}");
+      });
+      server.on("/api/proxies", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"proxies\": []}");
+      });
+      server.on("/api/channel/output/co-pixelStrings", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"pixelStrings\": []}");
+      });
+      server.on("/api/channel/output/channelOutputsJSON", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"channels\": []}");
+      });
+      server.on("/api/channel/output/co-other", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"other\": []}");
+      });
+      server.on("/proxy/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{}");
+      });
+      server.on("/fpp/discover", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String json = buildSystemInfoJSON();
+        request->send(200, "application/json", json);
+      });
 
-      // Endpoint for file upload using raw data (application/octet-stream)
-      // onUpload callback is set to NULL.
+      // Endpoint pre file upload cez raw dáta (application/octet-stream)
       server.on("/fpp", HTTP_POST,
-        // onRequest callback – called after upload completion
+        // onRequest callback – po dokončení uploadu
         [this](AsyncWebServerRequest *request) {
           if (uploadStream != nullptr) {
             uploadStream->flush();
@@ -207,24 +267,21 @@ class UsermodFPP : public Usermod {
           if (currentUploadFile) {
             currentUploadFile.close();
           }
-          unsigned long uploadTime = (millis() - uploadStartTime) / 1000;
-          DEBUG_PRINTF("[FPP] File uploaded successfully in %lu seconds\n", uploadTime);
           currentUploadFileName = "";
           request->send(200, "text/plain", "Upload complete");
         },
-        // onUpload callback – not used (set to NULL)
+        // onUpload callback – nie je použitý (NULL)
         NULL,
-        // onBody callback – processes the raw upload data
+        // onBody callback – spracováva raw upload dáta
         [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
           if (index == 0) {
-            // Log all parameters for debugging
+            // Načítanie parametrov uploadu
             DEBUG_PRINTLN("[FPP] Received parameters:");
             for (uint8_t i = 0; i < request->params(); i++) {
               AsyncWebParameter* p = request->getParam(i);
               DEBUG_PRINTF("[FPP] Param %s = %s\n", p->name().c_str(), p->value().c_str());
             }
             String fileParam = "";
-            // Check for "filename" parameter (xLights sends it as "filename")
             if (request->hasParam("filename")) {
               fileParam = request->arg("filename");
             }
@@ -235,7 +292,6 @@ class UsermodFPP : public Usermod {
               currentUploadFileName = "/default.fseq";
             }
             DEBUG_PRINTF("[FPP] Using filename: %s\n", currentUploadFileName.c_str());
-            
             if (SD.exists(currentUploadFileName.c_str())) {
               SD.remove(currentUploadFileName.c_str());
             }
@@ -262,10 +318,22 @@ class UsermodFPP : public Usermod {
         }
       );
 
-      // Example API endpoint (additional endpoints can be added as needed)
-      server.on("/api/system/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        String json = buildSystemInfoJSON();
-        request->send(200, "application/json", json);
+      server.on("/fpp/connect", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!request->hasArg("file")) {
+          request->send(400, "text/plain", "Missing 'file' parameter");
+          return;
+        }
+        String filepath = request->arg("file");
+        if (!filepath.startsWith("/")) {
+          filepath = "/" + filepath;
+        }
+        FSEQFile::loadRecording(filepath.c_str(), 0, strip.getLength());
+        request->send(200, "text/plain", "FPP connect started: " + filepath);
+      });
+      server.on("/fpp/stop", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        FSEQFile::clearLastPlayback();
+        realtimeLock(10, REALTIME_MODE_INACTIVE);
+        request->send(200, "text/plain", "FPP connect stopped");
       });
     }
 
@@ -278,7 +346,7 @@ class UsermodFPP : public Usermod {
           });
         }
       }
-      // Additional periodic tasks can be added here
+      FSEQFile::handlePlayRecording();
     }
 
     uint16_t getId() {
@@ -286,6 +354,6 @@ class UsermodFPP : public Usermod {
     }
     void addToConfig(JsonObject &root) { }
     bool readFromConfig(JsonObject &root) { return true; }
-}; // End of UsermodFPP class
+};
 
 const char UsermodFPP::_name[] PROGMEM = "FPP Connect";

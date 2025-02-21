@@ -7,10 +7,6 @@ Add the following configuration to your `platformio_override.ini` (or `platformi
 build_flags = 
   -D WLED_DEBUG
   -D WLED_USE_SD_SPI
-  -D WLED_PIN_SCK=18    ; CLK
-  -D WLED_PIN_MISO=19   ; Data Out (POCI)
-  -D WLED_PIN_MOSI=23   ; Data In (PICO)
-  -D WLED_PIN_SS=5      ; Chip Select (CS)
   -D USERMOD_FSEQ
   -std=gnu++17
   -I wled00/src/dependencies/json

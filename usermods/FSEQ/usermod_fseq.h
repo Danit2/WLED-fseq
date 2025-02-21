@@ -1,7 +1,6 @@
 #pragma once
 
 // --- Macro Definitions ---
-// These macros must be defined before any other includes.
 #ifndef USED_STORAGE_FILESYSTEMS
   #ifdef WLED_USE_SD_SPI
     #define USED_STORAGE_FILESYSTEMS "SD SPI, LittleFS"
@@ -55,8 +54,6 @@
 #endif
 
 // --- FSEQ Playback Logic ---
-// This section defines the FSEQFile class which is responsible for reading
-// and playing back FSEQ files.
 #ifndef RECORDING_REPEAT_LOOP
   #define RECORDING_REPEAT_LOOP -1
 #endif
@@ -66,35 +63,30 @@
 
 class FSEQFile {
 public:
-  // Structure representing the header of an FSEQ file.
   struct file_header_t {
-    uint8_t  identifier[4];       // 'PSEQ' or 'FSEQ'
-    uint16_t channel_data_offset;   // Offset at which channel data begins
-    uint8_t  minor_version;         // Minor version (e.g., 0, 1, 2)
-    uint8_t  major_version;         // Major version (e.g., 2)
-    uint16_t header_length;         // Length of the header
-    uint32_t channel_count;         // Number of channels (e.g., for 300 RGB LEDs = 900)
-    uint32_t frame_count;           // Number of frames in the sequence
-    uint8_t  step_time;             // Time between frames in milliseconds
+    uint8_t  identifier[4];       
+    uint16_t channel_data_offset; 
+    uint8_t  minor_version;       
+    uint8_t  major_version;       
+    uint16_t header_length;       
+    uint32_t channel_count;       
+    uint32_t frame_count;         
+    uint8_t  step_time;           
     uint8_t  flags;
   };
 
-  // Public methods for FSEQ playback.
   static void handlePlayRecording();
   static void loadRecording(const char* filepath, uint16_t startLed, uint16_t stopLed);
   static void clearLastPlayback();
 
 private:
-  FSEQFile() {};  // Private constructor
-
-  // Version constants.
+  FSEQFile() {};
   static const int V1FSEQ_MINOR_VERSION = 0;
   static const int V1FSEQ_MAJOR_VERSION = 1;
   static const int V2FSEQ_MINOR_VERSION = 0;
   static const int V2FSEQ_MAJOR_VERSION = 2;
   static const int FSEQ_DEFAULT_STEP_TIME = 50;
 
-  // Static variables.
   static File     recordingFile;
   static uint8_t  colorChannels;
   static int32_t  recordingRepeats;
@@ -106,7 +98,6 @@ private:
   static uint16_t buffer_size;
   static file_header_t file_header;
 
-  // Inline functions for reading multi-byte values.
   static inline uint32_t readUInt32() {
     char buffer[4];
     if (recordingFile.readBytes(buffer, 4) < 4) return 0;
@@ -128,7 +119,6 @@ private:
     return (uint8_t)buffer[0];
   }
 
-  // Functions to check if a file exists on SD (or FS, though FS is not used here).
   static bool fileOnSD(const char* filepath) {
     uint8_t cardType = SD_ADAPTER.cardType();
     if(cardType == CARD_NONE) return false;
@@ -137,8 +127,6 @@ private:
   static bool fileOnFS(const char* filepath) {
     return false; // Only using SD
   }
-
-  // Print the FSEQ header information for debugging.
   static void printHeaderInfo() {
     DEBUG_PRINTLN("FSEQ file_header:");
     DEBUG_PRINTF(" channel_data_offset = %d\n", file_header.channel_data_offset);
@@ -150,8 +138,6 @@ private:
     DEBUG_PRINTF(" step_time           = %d\n", file_header.step_time);
     DEBUG_PRINTF(" flags               = %d\n", file_header.flags);
   }
-
-  // Process a single frame of data.
   static void processFrameData() {
     uint16_t packetLength = file_header.channel_count;
     uint16_t lastLed = min(playbackLedStop, uint16_t(playbackLedStart + (packetLength / 3)));
@@ -172,8 +158,6 @@ private:
     realtimeLock(3000, REALTIME_MODE_FSEQ);
     next_time = now + file_header.step_time;
   }
-
-  // Checks whether the playback has reached the end of the file.
   static bool stopBecauseAtTheEnd() {
     if (!recordingFile.available()) {
       if (recordingRepeats == RECORDING_REPEAT_LOOP) {
@@ -192,12 +176,10 @@ private:
     }
     return false;
   }
-
-  // Advances to the next frame.
   static void playNextRecordingFrame() {
     if (stopBecauseAtTheEnd()) return;
     uint32_t offset = file_header.channel_count * frame++;
-    offset += file_header.channel_data_offset; // Correct offset for channel data
+    offset += file_header.channel_data_offset; 
     if (!recordingFile.seek(offset)) {
       if (recordingFile.position() != offset) {
         DEBUG_PRINTLN("Failed to seek to proper offset for channel data!");
@@ -208,7 +190,7 @@ private:
   }
 };
 
-// Definition of static variables
+// Definícia statických premenných FSEQFile
 File     FSEQFile::recordingFile;
 uint8_t  FSEQFile::colorChannels = 3;
 int32_t  FSEQFile::recordingRepeats = RECORDING_REPEAT_DEFAULT;
@@ -220,7 +202,7 @@ uint32_t FSEQFile::frame = 0;
 uint16_t FSEQFile::buffer_size = 48;
 FSEQFile::file_header_t FSEQFile::file_header;
 
-// Public methods of FSEQFile
+// Verejné metódy FSEQFile
 void FSEQFile::handlePlayRecording() {
   now = millis();
   if (realtimeMode != REALTIME_MODE_FSEQ) return;
@@ -246,7 +228,6 @@ void FSEQFile::loadRecording(const char* filepath, uint16_t startLed, uint16_t s
     recordingFile = SD_ADAPTER.open(filepath, "rb");
   } else if (fileOnFS(filepath)) {
     DEBUG_PRINTF("Read file from FS: %s\n", filepath);
-    // FS not used in this example
   } else {
     DEBUG_PRINTF("File %s not found (%s)\n", filepath, USED_STORAGE_FILESYSTEMS);
     return;
@@ -297,17 +278,17 @@ void FSEQFile::clearLastPlayback() {
   frame = 0;
 }
 
-// --- Web UI for FSEQ Playback ---
-// This section adds web endpoints for managing SD files and controlling FSEQ playback.
+// --- Web UI pre FSEQ prehrávanie a SD ---
 class UsermodFseq : public Usermod {
 private:
   bool sdInitDone = false;
 
 #ifdef WLED_USE_SD_SPI
-  int8_t configPinSourceSelect = 5;
-  int8_t configPinSourceClock   = 18;
-  int8_t configPinPoci          = 19;
-  int8_t configPinPico          = 23;
+  // Statické konfiguračné premenné – dostupné aj inde (napr. cez getter metódy)
+  static int8_t configPinSourceSelect; // CS
+  static int8_t configPinSourceClock;  // SCK
+  static int8_t configPinPoci;         // MISO
+  static int8_t configPinPico;         // MOSI
 
   void init_SD_SPI() {
     if(sdInitDone) return;
@@ -329,6 +310,7 @@ private:
     sdInitDone = true;
     DEBUG_PRINTF("[%s] SD SPI initialized\n", _name);
   }
+
   void deinit_SD_SPI() {
     if(!sdInitDone) return;
     SD_ADAPTER.end();
@@ -339,6 +321,7 @@ private:
     sdInitDone = false;
     DEBUG_PRINTF("[%s] SD SPI deinitalized\n", _name);
   }
+
   void reinit_SD_SPI() {
     deinit_SD_SPI();
     init_SD_SPI();
@@ -357,7 +340,6 @@ private:
   }
 #endif
 
-  // Web UI: List files on SD card
   void listFiles(const char* dirname, String &result) {
     DEBUG_PRINTF("[%s] Listing directory: %s\n", _name, dirname);
     File root = SD_ADAPTER.open(dirname);
@@ -380,7 +362,6 @@ private:
     root.close();
   }
 
-  // Web UI: Handle file uploads
   void handleUploadFile(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
     static File uploadFile;
     String path = filename;
@@ -420,6 +401,14 @@ private:
 public:
   static const char _name[];
 
+  // Verejné statické getter metódy, aby iné časti kódu mohli získať tieto hodnoty
+#ifdef WLED_USE_SD_SPI
+  static int8_t getCsPin()   { return configPinSourceSelect; }
+  static int8_t getSckPin()  { return configPinSourceClock; }
+  static int8_t getMisoPin() { return configPinPoci; }
+  static int8_t getMosiPin() { return configPinPico; }
+#endif
+
   void setup() {
     DEBUG_PRINTF("[%s] Usermod loaded\n", _name);
 #ifdef WLED_USE_SD_SPI
@@ -433,9 +422,7 @@ public:
       DEBUG_PRINTF("[%s] SD initialization FAILED.\n", _name);
     }
     
-    // --- Web Endpoints for SD & FSEQ Management ---
-    
-    // Endpoint: /sd/ui - Main menu for SD and FSEQ
+    // Web Endpoints pre správu SD & FSEQ
     server.on("/sd/ui", HTTP_GET, [this](AsyncWebServerRequest *request) {
       String html = "<html><head><meta charset='utf-8'><title>SD & FSEQ Manager</title>";
       html += "<style>";
@@ -443,16 +430,7 @@ public:
       html += "h1 { margin-top: 0; }";
       html += "ul { list-style: none; padding: 0; margin: 0 0 20px 0; }";
       html += "li { margin-bottom: 10px; }";
-      html += "a, button {";
-      html += "  display: inline-block;";
-      html += "  font-size: 24px;";
-      html += "  color: #00FF00;";
-      html += "  border: 2px solid #00FF00;";
-      html += "  background-color: transparent;";
-      html += "  padding: 10px 20px;";
-      html += "  margin: 5px;";
-      html += "  text-decoration: none;";
-      html += "}";
+      html += "a, button { display: inline-block; font-size: 24px; color: #00FF00; border: 2px solid #00FF00; background-color: transparent; padding: 10px 20px; margin: 5px; text-decoration: none; }";
       html += "a:hover, button:hover { background-color: #00FF00; color: #000; }";
       html += "</style></head><body>";
       html += "<h1>SD & FSEQ Manager</h1>";
@@ -465,7 +443,6 @@ public:
       request->send(200, "text/html", html);
     });
     
-    // Endpoint: /sd/list - SD File Manager
     server.on("/sd/list", HTTP_GET, [this](AsyncWebServerRequest *request) {
       DEBUG_PRINTF("[%s] /sd/list endpoint requested\n", _name);
       String html = "<html><head><meta charset='utf-8'><title>SD Card Files</title>";
@@ -474,26 +451,21 @@ public:
       html += "h1 { margin-top: 0; }";
       html += "ul { list-style: none; margin: 0; padding: 0; }";
       html += "li { margin-bottom: 10px; }";
-      // Common style for links and buttons
       html += "a, button { display: inline-block; font-size: 24px; color: #00FF00; border: 2px solid #00FF00; background-color: transparent; padding: 10px 20px; margin: 5px; text-decoration: none; }";
       html += "a:hover, button:hover { background-color: #00FF00; color: #000; }";
-      // Delete button style: red border and text
       html += ".deleteLink { border-color: #FF0000; color: #FF0000; }";
       html += ".deleteLink:hover { background-color: #FF0000; color: #000; }";
-      // Back link style: add a border and some padding
       html += ".backLink { border: 2px solid #00FF00; padding: 10px 20px; }";
       html += "</style></head><body>";
       html += "<h1>SD Card Files</h1><ul>";
     
-      // List files on SD card (with inline deletion links)
       File root = SD_ADAPTER.open("/");
       if (root && root.isDirectory()) {
         File file = root.openNextFile();
         while(file) {
           String name = file.name();
           html += "<li>" + name + " (" + String(file.size()) + " bytes) ";
-          html += "<a href='#' class='deleteLink' onclick=\"deleteFile('" + name + "'); return false;\">Delete</a>";
-          html += "</li>";
+          html += "<a href='#' class='deleteLink' onclick=\"deleteFile('" + name + "')\">Delete</a></li>";
           file.close();
           file = root.openNextFile();
         }
@@ -501,19 +473,13 @@ public:
       root.close();
     
       html += "</ul>";
-      
-      // Upload form with AJAX submission
       html += "<h2>Upload File</h2>";
       html += "<form id='uploadForm' enctype='multipart/form-data'>";
       html += "Select file: <input type='file' name='upload'><br><br>";
       html += "<input type='submit' value='Upload'>";
       html += "</form>";
       html += "<div id='uploadStatus'></div>";
-    
-      // Back link stays on the same window
-      html += "<p><a href='/sd/ui'>Back</a></p>";
-      
-      // JavaScript to handle AJAX for file upload and deletion
+      html += "<p><a href='/sd/ui'>BACK</a></p>";
       html += "<script>";
       html += "document.getElementById('uploadForm').addEventListener('submit', function(e) {";
       html += "  e.preventDefault();";
@@ -523,7 +489,7 @@ public:
       html += "    .then(response => response.text())";
       html += "    .then(data => {";
       html += "      document.getElementById('uploadStatus').innerText = data;";
-      html += "      setTimeout(function() { location.reload(); }, 1000);";  // Refresh list after 1 second
+      html += "      setTimeout(function() { location.reload(); }, 1000);";
       html += "    })";
       html += "    .catch(err => {";
       html += "      document.getElementById('uploadStatus').innerText = 'Upload failed';";
@@ -537,12 +503,10 @@ public:
       html += "    .catch(err => { alert('Delete failed'); });";
       html += "}";
       html += "</script>";
-      
       html += "</body></html>";
       request->send(200, "text/html", html);
     });
     
-    // Endpoint: /sd/upload - Handle file uploads
     server.on("/sd/upload", HTTP_POST, [this](AsyncWebServerRequest *request) {
       DEBUG_PRINTF("[%s] /sd/upload HTTP_POST endpoint requested\n", _name);
       request->send(200, "text/plain", "Upload complete");
@@ -550,7 +514,6 @@ public:
       handleUploadFile(request, filename, index, data, len, final);
     });
     
-    // Endpoint: /sd/delete - Delete file on SD card
     server.on("/sd/delete", HTTP_GET, [this](AsyncWebServerRequest *request) {
       DEBUG_PRINTF("[%s] /sd/delete endpoint requested\n", _name);
       if (!request->hasArg("path")) {
@@ -558,71 +521,63 @@ public:
         return;
       }
       String path = request->arg("path");
-      
-
       if (!path.startsWith("/")) {
         path = "/" + path;
       }
-    
       bool res = SD_ADAPTER.remove(path.c_str());
       DEBUG_PRINTF("[%s] Delete file request: %s, result: %d\n", _name, path.c_str(), res);
-      
       String msg = res ? "File deleted" : "Delete failed";
       request->send(200, "text/plain", msg);
     });
     
-    
-    // Endpoint: /fseq/list - List FSEQ files with Play/Stop buttons
-server.on("/fseq/list", HTTP_GET, [this](AsyncWebServerRequest *request) {
-  DEBUG_PRINTF("[%s] /fseq/list endpoint requested\n", _name);
-  String html = "<html><head><meta charset='utf-8'><title>FSEQ Files</title>";
-  html += "<style>";
-  html += "body { font-family: sans-serif; font-size: 24px; color: #00FF00; background-color: #000; margin: 0; padding: 20px; }";
-  html += "h1 { margin-top: 0; }";
-  html += "ul { list-style: none; margin: 0; padding: 0; }";
-  html += "li { margin-bottom: 10px; }";
-  html += "a, button { display: inline-block; font-size: 24px; color: #00FF00; border: 2px solid #00FF00; background-color: transparent; padding: 10px 20px; margin: 5px; text-decoration: none; }";
-  html += "a:hover, button:hover { background-color: #00FF00; color: #000; }";
-  html += "</style></head><body>";
-  html += "<h1>FSEQ Files</h1><ul>";
-  
-  File root = SD_ADAPTER.open("/");
-  if(root && root.isDirectory()){
-    File file = root.openNextFile();
-    while(file){
-      String name = file.name();
-      if(name.endsWith(".fseq") || name.endsWith(".FSEQ")){
-        html += "<li>" + name + " ";
-        html += "<button id='btn_" + name + "' onclick=\"toggleFseq('" + name + "')\">Play</button>";
-        html += "</li>";
+    server.on("/fseq/list", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      DEBUG_PRINTF("[%s] /fseq/list endpoint requested\n", _name);
+      String html = "<html><head><meta charset='utf-8'><title>FSEQ Files</title>";
+      html += "<style>";
+      html += "body { font-family: sans-serif; font-size: 24px; color: #00FF00; background-color: #000; margin: 0; padding: 20px; }";
+      html += "h1 { margin-top: 0; }";
+      html += "ul { list-style: none; margin: 0; padding: 0; }";
+      html += "li { margin-bottom: 10px; }";
+      html += "a, button { display: inline-block; font-size: 24px; color: #00FF00; border: 2px solid #00FF00; background-color: transparent; padding: 10px 20px; margin: 5px; text-decoration: none; }";
+      html += "a:hover, button:hover { background-color: #00FF00; color: #000; }";
+      html += "</style></head><body>";
+      html += "<h1>FSEQ Files</h1><ul>";
+      
+      File root = SD_ADAPTER.open("/");
+      if(root && root.isDirectory()){
+        File file = root.openNextFile();
+        while(file){
+          String name = file.name();
+          if(name.endsWith(".fseq") || name.endsWith(".FSEQ")){
+            html += "<li>" + name + " ";
+            html += "<button id='btn_" + name + "' onclick=\"toggleFseq('" + name + "')\">Play</button>";
+            html += "</li>";
+          }
+          file.close();
+          file = root.openNextFile();
+        }
       }
-      file.close();
-      file = root.openNextFile();
-    }
-  }
-  root.close();
-  
-  html += "</ul>";
-  html += "<p><a href='/sd/ui' class='backLink'>BACK</a></p>";
-  html += "<script>";
-  html += "function toggleFseq(file){";
-  html += "  var btn = document.getElementById('btn_' + file);";
-  html += "  if(btn.innerText === 'Play'){";
-  html += "    fetch('/fseq/start?file=' + encodeURIComponent(file))";
-  html += "      .then(response => response.text())";
-  html += "      .then(data => { btn.innerText = 'Stop'; });";
-  html += "  } else {";
-  html += "    fetch('/fseq/stop?file=' + encodeURIComponent(file))";
-  html += "      .then(response => response.text())";
-  html += "      .then(data => { btn.innerText = 'Play'; });";
-  html += "  }";
-  html += "}";
-  html += "</script>";
-  html += "</body></html>";
-  request->send(200, "text/html", html);
-});
+      root.close();
+      html += "</ul>";
+      html += "<p><a href='/sd/ui' class='backLink'>BACK</a></p>";
+      html += "<script>";
+      html += "function toggleFseq(file){";
+      html += "  var btn = document.getElementById('btn_' + file);";
+      html += "  if(btn.innerText === 'Play'){";
+      html += "    fetch('/fseq/start?file=' + encodeURIComponent(file))";
+      html += "      .then(response => response.text())";
+      html += "      .then(data => { btn.innerText = 'Stop'; });";
+      html += "  } else {";
+      html += "    fetch('/fseq/stop?file=' + encodeURIComponent(file))";
+      html += "      .then(response => response.text())";
+      html += "      .then(data => { btn.innerText = 'Play'; });";
+      html += "  }";
+      html += "}";
+      html += "</script>";
+      html += "</body></html>";
+      request->send(200, "text/html", html);
+    });
     
-    // Endpoint: /fseq/start - Start FSEQ playback
     server.on("/fseq/start", HTTP_GET, [this](AsyncWebServerRequest *request) {
       if (!request->hasArg("file")) {
         request->send(400, "text/plain", "Missing 'file' parameter");
@@ -639,7 +594,6 @@ server.on("/fseq/list", HTTP_GET, [this](AsyncWebServerRequest *request) {
       request->send(200, "text/plain", "FSEQ started: " + filepath);
     });
     
-    // Endpoint: /fseq/stop - Stop FSEQ playback
     server.on("/fseq/stop", HTTP_GET, [this](AsyncWebServerRequest *request) {
       FSEQFile::clearLastPlayback();
       realtimeLock(10, REALTIME_MODE_INACTIVE);
@@ -649,15 +603,48 @@ server.on("/fseq/list", HTTP_GET, [this](AsyncWebServerRequest *request) {
   }
 
   void loop() {
-    // Call the FSEQ playback handler periodically
     FSEQFile::handlePlayRecording();
   }
 
   uint16_t getId() {
-    return USERMOD_ID_SD_CARD;  // Ensure you have a unique ID
+    return USERMOD_ID_SD_CARD;  // Uistite sa, že máte unikátne ID
   }
-  void addToConfig(JsonObject &root) { }
-  bool readFromConfig(JsonObject &root) { return true; }
+
+  // Pridanie nastavení usermodu do WLED config
+  void addToConfig(JsonObject &root) {
+    #ifdef WLED_USE_SD_SPI
+    JsonObject top = root.createNestedObject(FPSTR(_name));
+    top["csPin"]  = configPinSourceSelect;
+    top["sckPin"] = configPinSourceClock;
+    top["misoPin"] = configPinPoci;
+    top["mosiPin"] = configPinPico;
+    #endif
+  }
+
+  bool readFromConfig(JsonObject &root) {
+    #ifdef WLED_USE_SD_SPI
+    JsonObject top = root[FPSTR(_name)];
+    if (top.isNull()) return false;
+    if (top["csPin"].is<int>())   configPinSourceSelect = top["csPin"].as<int>();
+    if (top["sckPin"].is<int>())  configPinSourceClock  = top["sckPin"].as<int>();
+    if (top["misoPin"].is<int>()) configPinPoci         = top["misoPin"].as<int>();
+    if (top["mosiPin"].is<int>()) configPinPico         = top["mosiPin"].as<int>();
+
+    // Re-inicializácia SD pre použitie nových pinov
+    reinit_SD_SPI();
+    return true;
+    #else
+    return false;
+    #endif
+  }
 };
 
 const char UsermodFseq::_name[] PROGMEM = "SD & FSEQ Web";
+
+// Definícia statických konfiguračných premenných (platí pre SD SPI)
+#ifdef WLED_USE_SD_SPI
+int8_t UsermodFseq::configPinSourceSelect = 5;
+int8_t UsermodFseq::configPinSourceClock  = 18;
+int8_t UsermodFseq::configPinPoci         = 19;
+int8_t UsermodFseq::configPinPico         = 23;
+#endif
