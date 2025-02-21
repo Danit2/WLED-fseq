@@ -1,3 +1,37 @@
+this is my platformio_override.ini
+
+[env:esp32dev_V4]
+build_flags = 
+  -D WLED_DEBUG
+  -D WLED_USE_SD_SPI
+  -D WLED_PIN_SCK=18    ; CLK
+  -D WLED_PIN_MISO=19   ; DO POCI
+  -D WLED_PIN_MOSI=23   ; DI PICO
+  -D WLED_PIN_SS=5      ; CS (Chip Select)
+  -D USERMOD_FPP
+  -D USERMOD_FSEQ
+  -std=gnu++17
+  -I wled00/src/dependencies/json
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # SD & FSEQ Usermod for WLED
 
 This usermod adds support for playing FSEQ files from an SD card and provides a web interface for managing SD files and FSEQ playback. Follow the instructions below to install and use this usermod.
