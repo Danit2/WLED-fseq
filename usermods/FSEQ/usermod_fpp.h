@@ -66,14 +66,48 @@ class WriteBufferingStream : public Stream {
 
 #define FILE_UPLOAD_BUFFER_SIZE (563 * 7)
 
+// Definície pre UDP (FPP) synchronizáciu
+#define CTRL_PKT_SYNC   1
+#define CTRL_PKT_PING   4
+#define CTRL_PKT_BLANK  3
+
+// UDP port pre FPP discovery/synchronizáciu
+const uint16_t UDP_SYNC_PORT = 32320;
+
+// Inline funkcie pre zápis 16-bitových a 32-bitových hodnôt
+static inline void write16(uint8_t* dest, uint16_t value) {
+  dest[0] = (value >> 8) & 0xff;
+  dest[1] = value & 0xff;
+}
+
+static inline void write32(uint8_t* dest, uint32_t value) {
+  dest[0] = (value >> 24) & 0xff;
+  dest[1] = (value >> 16) & 0xff;
+  dest[2] = (value >> 8) & 0xff;
+  dest[3] = value & 0xff;
+}
+
+// Štruktúra synchronizačného paketu (prispôsobte podľa potreby)
+struct FPPMultiSyncPacket {
+  uint8_t header[4];          // napr. "FPPD"
+  uint8_t packet_type;        // napr. CTRL_PKT_SYNC
+  uint16_t data_len;          // dĺžka dát
+  uint8_t sync_action;        // akcia: start, stop, sync, open, atď.
+  uint8_t sync_type;          // typ synchronizácie, napr. 0 pre FSEQ
+  uint32_t frame_number;      // aktuálny rámec
+  float seconds_elapsed;      // uplynuté sekundy
+  char filename[64];          // názov prehrávaného súboru
+  uint8_t raw[128];           // surové dáta paketu
+};
+
 class UsermodFPP : public Usermod {
   private:
     AsyncUDP udp;
     bool udpStarted = false;
     const IPAddress multicastAddr = IPAddress(239, 70, 80, 80);
-    const uint16_t udpPort = 32320; // UDP port pre FPP discovery
+    const uint16_t udpPort = UDP_SYNC_PORT; // UDP port pre FPP discovery
 
-    // Premenné pre spracovanie uploadu súborov
+    // Premenné pre upload FSEQ súborov
     File currentUploadFile;
     String currentUploadFileName = "";
     unsigned long uploadStartTime = 0;
@@ -154,12 +188,12 @@ class UsermodFPP : public Usermod {
       return json;
     }
 
-    // Odoslanie ping paket cez UDP
+    // Odoslanie ping paketu cez UDP
     void sendPingPacket(IPAddress destination = IPAddress(255,255,255,255)) {
       uint8_t buf[301];
       memset(buf, 0, sizeof(buf));
       buf[0] = 'F'; buf[1] = 'P'; buf[2] = 'P'; buf[3] = 'D';
-      buf[4] = 0x04;
+      buf[4] = 0x04; // ping typ
       uint16_t dataLen = 294;
       buf[5] = (dataLen >> 8) & 0xFF;
       buf[6] = dataLen & 0xFF;
@@ -190,19 +224,70 @@ class UsermodFPP : public Usermod {
       udp.writeTo(buf, sizeof(buf), destination, udpPort);
     }
 
+    // Odoslanie synchronizačnej správy
+    void sendSyncMessage(uint8_t action, const String &fileName, uint32_t currentFrame, float secondsElapsed) {
+      FPPMultiSyncPacket syncPacket;
+      // Vyplníme hlavičku "FPPD"
+      syncPacket.header[0] = 'F';
+      syncPacket.header[1] = 'P';
+      syncPacket.header[2] = 'P';
+      syncPacket.header[3] = 'D';
+      syncPacket.packet_type = CTRL_PKT_SYNC;
+      // Nastavíme dĺžku dát – využijeme veľkosť celej štruktúry
+      write16((uint8_t*)&syncPacket.data_len, sizeof(syncPacket));
+      syncPacket.sync_action = action;
+      syncPacket.sync_type = 0; // FSEQ synchronizácia
+      write32((uint8_t*)&syncPacket.frame_number, currentFrame);
+      syncPacket.seconds_elapsed = secondsElapsed;
+      // Skopírujeme názov súboru (ak je dlhší, bude orezaný)
+      strncpy(syncPacket.filename, fileName.c_str(), sizeof(syncPacket.filename)-1);
+      syncPacket.filename[sizeof(syncPacket.filename)-1] = 0x00;
+
+      // Odosielame paket na broadcast aj multicast adresy
+      udp.writeTo(syncPacket.raw, sizeof(syncPacket), IPAddress(255,255,255,255), udpPort);
+      udp.writeTo(syncPacket.raw, sizeof(syncPacket), multicastAddr, udpPort);
+    }
+
+    // Spracovanie prijatého UDP paketu
+    void processUdpPacket(AsyncUDPPacket packet) {
+      if(packet.length() < 4) return;
+      if(packet.data()[0] != 'F' || packet.data()[1] != 'P' ||
+         packet.data()[2] != 'P' || packet.data()[3] != 'D')
+        return;
+      uint8_t packetType = packet.data()[4];
+      switch(packetType) {
+        case CTRL_PKT_SYNC: {
+          FPPMultiSyncPacket* syncPacket = reinterpret_cast<FPPMultiSyncPacket*>(packet.data());
+          DEBUG_PRINTLN(F("[FPP] Received UDP sync packet"));
+          // Voláme synchronizačnú funkciu pre FSEQ playback, ak ju implementujete
+          // Napríklad: FSEQPlayer::syncFromUdp(syncPacket->filename, syncPacket->seconds_elapsed);
+          break;
+        }
+        case CTRL_PKT_PING:
+          DEBUG_PRINTLN(F("[FPP] Received UDP ping packet"));
+          sendPingPacket(packet.remoteIP());
+          break;
+        case CTRL_PKT_BLANK:
+          DEBUG_PRINTLN(F("[FPP] Received UDP blank packet"));
+          // Prípadne zastavte prehrávanie
+          break;
+        default:
+          DEBUG_PRINTLN(F("[FPP] Unknown UDP packet type"));
+          break;
+      }
+    }
+
   public:
     static const char _name[];
 
     void setup() {
       DEBUG_PRINTF("[%s] FPP Usermod loaded\n", _name);
-
+      
 #ifdef WLED_USE_SD_SPI
-      // Načítanie pinov z UsermodFseq cez getter metódy
       int8_t csPin   = UsermodFseq::getCsPin();
       int8_t sckPin  = UsermodFseq::getSckPin();
       int8_t misoPin = UsermodFseq::getMisoPin();
       int8_t mosiPin = UsermodFseq::getMosiPin();
-      // SPI port je predpokladom inicializovaný v UsermodFseq, ak nie, je možné použiť napr. SPIClass(VSPI)
       if (!SD.begin(csPin)) {
         DEBUG_PRINTF("[%s] ERROR: SD.begin() failed with CS pin %d!\n", _name, csPin);
       } else {
@@ -216,7 +301,7 @@ class UsermodFPP : public Usermod {
       }
 #endif
 
-      // Príklad niektorých API endpointov
+      // API endpointy
       server.on("/api/system/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String json = buildSystemInfoJSON();
         request->send(200, "application/json", json);
@@ -255,9 +340,8 @@ class UsermodFPP : public Usermod {
         request->send(200, "application/json", json);
       });
 
-      // Endpoint pre file upload cez raw dáta (application/octet-stream)
+      // Endpoint pre upload súborov (raw dáta, application/octet-stream)
       server.on("/fpp", HTTP_POST,
-        // onRequest callback – po dokončení uploadu
         [this](AsyncWebServerRequest *request) {
           if (uploadStream != nullptr) {
             uploadStream->flush();
@@ -270,12 +354,9 @@ class UsermodFPP : public Usermod {
           currentUploadFileName = "";
           request->send(200, "text/plain", "Upload complete");
         },
-        // onUpload callback – nie je použitý (NULL)
         NULL,
-        // onBody callback – spracováva raw upload dáta
         [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
           if (index == 0) {
-            // Načítanie parametrov uploadu
             DEBUG_PRINTLN("[FPP] Received parameters:");
             for (uint8_t i = 0; i < request->params(); i++) {
               AsyncWebParameter* p = request->getParam(i);
@@ -327,14 +408,26 @@ class UsermodFPP : public Usermod {
         if (!filepath.startsWith("/")) {
           filepath = "/" + filepath;
         }
-        FSEQFile::loadRecording(filepath.c_str(), 0, strip.getLength());
+        // Opravené: používa sa FSEQPlayer namiesto FSEQFile
+        FSEQPlayer::loadRecording(filepath.c_str(), 0, strip.getLength());
         request->send(200, "text/plain", "FPP connect started: " + filepath);
       });
       server.on("/fpp/stop", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        FSEQFile::clearLastPlayback();
+        // Opravené: FSEQPlayer namiesto FSEQFile
+        FSEQPlayer::clearLastPlayback();
         realtimeLock(10, REALTIME_MODE_INACTIVE);
         request->send(200, "text/plain", "FPP connect stopped");
       });
+      
+      // Inicializácia UDP listenera pre synchronizáciu a ping
+      if (!udpStarted && (WiFi.status() == WL_CONNECTED)) {
+        if (udp.listenMulticast(multicastAddr, udpPort)) {
+          udpStarted = true;
+          udp.onPacket([this](AsyncUDPPacket packet) {
+            processUdpPacket(packet);
+          });
+        }
+      }
     }
 
     void loop() {
@@ -342,11 +435,12 @@ class UsermodFPP : public Usermod {
         if (udp.listenMulticast(multicastAddr, udpPort)) {
           udpStarted = true;
           udp.onPacket([this](AsyncUDPPacket packet) {
-            sendPingPacket(packet.remoteIP());
+            processUdpPacket(packet);
           });
         }
       }
-      FSEQFile::handlePlayRecording();
+      // Spracovanie prehrávania FSEQ súborov pomocou FSEQPlayer
+      FSEQPlayer::handlePlayRecording();
     }
 
     uint16_t getId() {
