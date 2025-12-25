@@ -1,7 +1,0 @@
-{
-  "name": "FSEQ",
-  "build": {
-    "srcDir": ".",
-    "libArchive": false
-  }
-}
