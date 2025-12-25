@@ -41,7 +41,7 @@
 
 #ifdef WLED_USE_SD_SPI
 #ifndef SPI_PORT_DEFINED
-inline SPIClass spiPort = SPIClass(VSPI);
+inline SPIClass spiPort = SPIClass(SPI);
 #define SPI_PORT_DEFINED
 #include "../usermods/FSEQ/fseq_player.h"
 #include "../usermods/FSEQ/sd_manager.h"
