@@ -15,10 +15,10 @@
 const char UsermodFseq::_name[] PROGMEM = "usermod FSEQ sd card";
 
 #ifdef WLED_USE_SD_SPI
-int8_t UsermodFseq::configPinSourceSelect = 5;
-int8_t UsermodFseq::configPinSourceClock = 18;
-int8_t UsermodFseq::configPinPoci = 19;
-int8_t UsermodFseq::configPinPico = 23;
+int8_t UsermodFseq::configPinSourceSelect = 43;
+int8_t UsermodFseq::configPinSourceClock = 7;
+int8_t UsermodFseq::configPinPoci = 8;
+int8_t UsermodFseq::configPinPico = 9;
 #endif
 
 File FSEQPlayer::recordingFile;
