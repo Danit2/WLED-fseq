@@ -1,5 +1,7 @@
 {
   "name": "FSEQ",
-  "build": { "libArchive": false },
-  "dependencies": {}
+  "build": {
+    "srcDir": ".",
+    "libArchive": false
+  }
 }
