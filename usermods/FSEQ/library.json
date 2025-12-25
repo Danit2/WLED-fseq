@@ -1,0 +1,5 @@
+{
+  "name": "FSEQ",
+  "build": { "libArchive": false },
+  "dependencies": {}
+}
